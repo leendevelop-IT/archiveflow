@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"لوحة التحكم"},{"path":"/transactions","title":"المعاملات"},{"path":"/transactions/new","title":"إضافة معاملة"},{"path":"/transactions/:id","title":"تفاصيل المعاملة"},{"path":"/reports","title":"التقارير"},{"path":"/users","title":"المستخدمون"},{"path":"/settings","title":"الإعدادات"}]}
