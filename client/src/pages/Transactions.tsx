@@ -7,13 +7,13 @@ import { PageHeader } from "@/components/ui";
 export type TxFilters = { query: string; type: string; status: string; priority: string; department: string; due: "" | "late" | "soon" };
 export const EMPTY_FILTERS: TxFilters = { query: "", type: "", status: "", priority: "", department: "", due: "" };
 
-export function Transactions({ data, total, filters, setFilters, departments, canEdit, onNew, onOpen, onExport }: {
+export function Transactions({ data, total, filters, setFilters, departments, canCreate, onNew, onOpen, onExport }: {
   data: Tx[];
   total: number;
   filters: TxFilters;
   setFilters: (next: TxFilters) => void;
   departments: string[];
-  canEdit: boolean;
+  canCreate: boolean;
   onNew: () => void;
   onOpen: (tx: Tx) => void;
   onExport: () => void;
@@ -27,7 +27,7 @@ export function Transactions({ data, total, filters, setFilters, departments, ca
       <PageHeader
         title="المعاملات"
         description="ابحث في كل المعاملات المسجلة، وافتح أي معاملة لرؤية تفاصيلها."
-        action={canEdit && <button type="button" className="btn btn-primary btn-lg" onClick={onNew}><Plus size={20} aria-hidden="true" /> معاملة جديدة</button>}
+        action={canCreate && <button type="button" className="btn btn-primary btn-lg" onClick={onNew}><Plus size={20} aria-hidden="true" /> معاملة جديدة</button>}
       />
 
       <div className="card filter-card">
@@ -87,7 +87,7 @@ export function Transactions({ data, total, filters, setFilters, departments, ca
           onOpen={onOpen}
           emptyTitle={total === 0 ? "لا توجد معاملات بعد" : "لا توجد نتائج مطابقة"}
           emptyText={total === 0 ? "سجّل أول معاملة لتظهر هنا." : "جرّب كلمة بحث أخرى أو امسح التصفية."}
-          emptyAction={total === 0 ? (canEdit && <button type="button" className="btn btn-primary" onClick={onNew}><Plus size={18} aria-hidden="true" /> معاملة جديدة</button>) : <button type="button" className="btn btn-outline" onClick={() => setFilters(EMPTY_FILTERS)}>مسح التصفية</button>}
+          emptyAction={total === 0 ? (canCreate && <button type="button" className="btn btn-primary" onClick={onNew}><Plus size={18} aria-hidden="true" /> معاملة جديدة</button>) : <button type="button" className="btn btn-outline" onClick={() => setFilters(EMPTY_FILTERS)}>مسح التصفية</button>}
         />
       </section>
     </>

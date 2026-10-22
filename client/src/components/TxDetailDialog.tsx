@@ -6,9 +6,13 @@ import { AttachmentName, Dialog, DueLabel, PriorityTag, RefNumber, StatusBadge, 
 
 const EVENT_LABELS: Record<string, string> = { created: "تم تسجيل المعاملة", updated: "تم تحديث البيانات", archived: "تمت الأرشفة", deleted: "نُقلت إلى سلة المحذوفات", restored: "تمت الاستعادة" };
 
-export function TxDetailDialog({ tx, canEdit, canDelete, onClose, onEdit, onArchive, onDelete }: {
+export function TxDetailDialog({ tx, canEdit, canFollowUp, canArchive, canDelete, onClose, onEdit, onArchive, onDelete }: {
   tx: Tx;
+  /** Full edit of every field. */
   canEdit: boolean;
+  /** Follow-up only: status, assignee, department, priority, notes. */
+  canFollowUp: boolean;
+  canArchive: boolean;
   canDelete: boolean;
   onClose: () => void;
   onEdit: () => void;
@@ -35,15 +39,15 @@ export function TxDetailDialog({ tx, canEdit, canDelete, onClose, onEdit, onArch
       className="detail-dialog"
       footer={
         <>
-          {canEdit && !tx.archived && (
+          {canArchive && !tx.archived && (
             <button type="button" className="btn btn-outline" onClick={onArchive}><Archive size={17} aria-hidden="true" /> أرشفة</button>
           )}
           <button type="button" className="btn btn-outline" onClick={() => window.print()}><Printer size={17} aria-hidden="true" /> طباعة</button>
           {canDelete && (
             <button type="button" className="btn btn-outline btn-danger-text" onClick={onDelete}><Trash2 size={17} aria-hidden="true" /> حذف</button>
           )}
-          {canEdit && (
-            <button type="button" className="btn btn-primary" onClick={onEdit} data-autofocus><Pencil size={17} aria-hidden="true" /> تعديل</button>
+          {(canEdit || canFollowUp) && (
+            <button type="button" className="btn btn-primary" onClick={onEdit} data-autofocus><Pencil size={17} aria-hidden="true" /> {canEdit ? "تعديل" : "تحديث المتابعة"}</button>
           )}
         </>
       }

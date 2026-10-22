@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, BarChart3, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Settings as SettingsIcon, Sun, UsersRound, X } from "lucide-react";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
-import { DEFAULT_DEPARTMENTS, initialsOf, listFromText, loadSettings, ROLE_LABELS, type AccountRole, type ArchiveSettings, type Tx, type TxForm } from "@/lib/archive";
+import { DEFAULT_DEPARTMENTS, initialsOf, listFromText, loadSettings, ROLE_HINTS, ROLE_LABELS, can, type AccountRole, type ArchiveSettings, type Tx, type TxForm } from "@/lib/archive";
+import { pickFollowUpFields } from "@shared/permissions";
 import { dueInfo, formatDateLong, todayIso } from "@/lib/format";
 import { ConfirmDialog, Toast } from "@/components/ui";
 import { TxFormDialog } from "@/components/TxFormDialog";
@@ -24,16 +25,6 @@ const NAV: { key: Page; label: string; icon: typeof LayoutDashboard; adminOnly?:
   { key: "reports", label: "التقارير", icon: BarChart3 },
   { key: "users", label: "المستخدمون", icon: UsersRound, adminOnly: true },
   { key: "settings", label: "الإعدادات", icon: SettingsIcon, adminOnly: true },
-];
-
-// Shown only while the server list has not arrived yet (or offline), so the screens are never blank.
-const SEED: Tx[] = [
-  { id: 1, number: "بلد/وارد/2026/00124", type: "واردة", subject: "طلب اعتماد مخطط تحسين الحديقة العامة", party: "أمانة المنطقة الشرقية", received: "2026-10-12", due: "2026-10-20", priority: "عالية", status: "جديدة", department: "الإدارة الهندسية", assignee: "أحمد العتيبي", notes: "يتطلب الرد خلال خمسة أيام عمل.", attachment: "مخطط-الحديقة.pdf" },
-  { id: 2, number: "بلد/صادر/2026/00098", type: "صادرة", subject: "تعميم تنظيم ساعات العمل الشتوية", party: "جميع الإدارات", received: "2026-10-10", due: "2026-10-15", priority: "متوسطة", status: "قيد الإجراء", department: "الشؤون الإدارية", assignee: "نورة القحطاني", notes: "بانتظار اعتماد المدير العام.", attachment: "تعميم-الدوام.docx" },
-  { id: 3, number: "بلد/داخلي/2026/00056", type: "داخلية", subject: "محضر اجتماع لجنة المشتريات", party: "إدارة المشتريات", received: "2026-10-08", due: "2026-10-13", priority: "منخفضة", status: "مكتملة", department: "المشتريات", assignee: "سارة الحربي", notes: "تمت الأرشفة بعد اعتماد المحضر.", attachment: "محضر-اللجنة.pdf" },
-  { id: 4, number: "بلد/وارد/2026/00118", type: "واردة", subject: "مطالبة مالية عن أعمال صيانة الطرق", party: "شركة المسار للمقاولات", received: "2026-10-01", due: "2026-10-10", priority: "عالية", status: "متأخرة", department: "المالية", assignee: "خالد الشهري", notes: "مطلوب مراجعة المستخلص النهائي.", attachment: "مطالبة-مالية.pdf" },
-  { id: 5, number: "بلد/وارد/2026/00121", type: "واردة", subject: "دعوة للمشاركة في ملتقى المدن الذكية", party: "وزارة البلديات والإسكان", received: "2026-10-11", due: "2026-10-18", priority: "متوسطة", status: "قيد الإجراء", department: "العلاقات العامة", assignee: "ريم المطيري", notes: "تأكيد أسماء المشاركين.", attachment: "دعوة-الملتقى.pdf" },
-  { id: 6, number: "بلد/صادر/2026/00094", type: "صادرة", subject: "رد على استفسار رخصة محل تجاري", party: "مؤسسة روافد التجارية", received: "2026-10-05", due: "2026-10-12", priority: "منخفضة", status: "مكتملة", department: "التراخيص", assignee: "عبدالله الزهراني", notes: "تم الإرسال عبر منصة المراسلات.", attachment: "الرد-الرسمي.pdf" },
 ];
 
 const TYPE_SLUG_AR: Record<Tx["type"], string> = { "واردة": "وارد", "صادرة": "صادر", "داخلية": "داخلي" };
@@ -62,15 +53,23 @@ function nextNumber(type: Tx["type"], settings: ArchiveSettings, txs: Tx[]) {
 function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () => void }) {
   const { theme, toggleTheme } = useTheme();
   const isAdmin = account.role === "admin";
-  const canEdit = account.role !== "readonly";
-  const roleLabel = ROLE_LABELS[account.role as AccountRole] ?? account.role;
+  const role = account.role as AccountRole;
+  const perms = {
+    create: can(role, "transactions.create"),
+    edit: can(role, "transactions.edit"),
+    followUp: can(role, "transactions.followUp"),
+    archive: can(role, "transactions.archive"),
+    delete: can(role, "transactions.delete"),
+  };
+  const roleLabel = ROLE_LABELS[role] ?? account.role;
+  const roleNotice = isAdmin ? "" : `صلاحيتك (${roleLabel}): ${ROLE_HINTS[role] ?? ""}`;
 
   const [settings, setSettings] = useState<ArchiveSettings>(loadSettings);
   const departments = useMemo(() => listFromText(settings.departments, DEFAULT_DEPARTMENTS), [settings.departments]);
   const [page, setPage] = useState<Page>(pageFromPath);
   const [mobileNav, setMobileNav] = useState(false);
-  const [txs, setTxs] = useState<Tx[]>(() => { try { return JSON.parse(localStorage.getItem("archive-txs") || "null") || SEED; } catch { return SEED; } });
-  const serverTxs = trpc.transactions.list.useQuery(undefined, { retry: false });
+  const [txs, setTxs] = useState<Tx[]>([]);
+  const serverTxs = trpc.transactions.list.useQuery(undefined, { retry: 1 });
   const createTx = trpc.transactions.create.useMutation();
   const updateTx = trpc.transactions.update.useMutation();
   const archiveTx = trpc.transactions.archive.useMutation();
@@ -85,13 +84,14 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" }>({ message: "", tone: "success" });
 
   useEffect(() => { if (serverTxs.data) setTxs(serverTxs.data as unknown as Tx[]); }, [serverTxs.data]);
-  useEffect(() => { localStorage.setItem("archive-txs", JSON.stringify(txs)); }, [txs]);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   useEffect(() => {
+    // Deep links like /transactions/12 open that transaction once the list has arrived.
+    if (deepLinkHandled || !serverTxs.data) return;
+    setDeepLinkHandled(true);
     const match = window.location.pathname.match(/^\/transactions\/(\d+)$/);
-    if (match) { const found = txs.find((t) => t.id === Number(match[1])); if (found) setSelected(found); }
-    // Only on first load: deep links like /transactions/12 open that transaction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (match) { const found = (serverTxs.data as unknown as Tx[]).find((t) => t.id === Number(match[1])); if (found) setSelected(found); }
+  }, [serverTxs.data, deepLinkHandled]);
   useEffect(() => {
     const onPop = () => setPage(pageFromPath());
     window.addEventListener("popstate", onPop);
@@ -136,18 +136,20 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
   const saveTx = (form: TxForm) => {
     const { attachmentBase64, attachmentMime, attachmentSize, ...data } = form;
     if (formTarget && formTarget !== "new") {
-      updateTx.mutate({ id: formTarget.id, data }, {
+      // Follow-up officers only send the fields they are allowed to change.
+      const payload = perms.edit ? data : pickFollowUpFields(data);
+      updateTx.mutate({ id: formTarget.id, data: payload }, {
         onSuccess: (updated) => {
           if (updated) {
             const next = updated as unknown as Tx;
             setTxs((prev) => prev.map((t) => (t.id === formTarget.id ? next : t)));
-            if (attachmentBase64 && attachmentMime && attachmentSize) uploadAttachment.mutate({ transactionId: formTarget.id, fileName: data.attachment, mimeType: attachmentMime, size: attachmentSize, base64: attachmentBase64 }, { onError: () => notify("تم حفظ المعاملة لكن تعذر رفع المرفق", "error") });
+            if (perms.edit && attachmentBase64 && attachmentMime && attachmentSize) uploadAttachment.mutate({ transactionId: formTarget.id, fileName: data.attachment, mimeType: attachmentMime, size: attachmentSize, base64: attachmentBase64 }, { onError: () => notify("تم حفظ المعاملة لكن تعذر رفع المرفق", "error") });
             setSelected((current) => (current && current.id === formTarget.id ? next : current));
           }
           notify("تم حفظ التعديلات");
           setFormTarget(null);
         },
-        onError: () => notify("تعذر حفظ التعديلات، حاول مرة أخرى", "error"),
+        onError: (error) => notify(error.data?.code === "CONFLICT" || error.data?.code === "FORBIDDEN" ? error.message : "تعذر حفظ التعديلات، حاول مرة أخرى", "error"),
       });
       return;
     }
@@ -160,7 +162,7 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
         notify(`تم تسجيل المعاملة برقم ${number}`);
         setFormTarget(null);
       },
-      onError: (error) => notify(error.data?.code === "CONFLICT" ? error.message : "تعذر حفظ المعاملة، تأكد من الاتصال ثم حاول مرة أخرى", "error"),
+      onError: (error) => notify(error.data?.code === "CONFLICT" || error.data?.code === "FORBIDDEN" ? error.message : "تعذر حفظ المعاملة، تأكد من الاتصال ثم حاول مرة أخرى", "error"),
     });
   };
 
@@ -170,12 +172,12 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
     if (kind === "archive") {
       archiveTx.mutate({ id: tx.id }, {
         onSuccess: (updated) => { setTxs((prev) => prev.map((t) => (t.id === tx.id ? (updated as unknown as Tx) : t))); notify("تمت أرشفة المعاملة"); setConfirm(null); setSelected(null); },
-        onError: () => { notify("تعذرت الأرشفة، حاول مرة أخرى", "error"); setConfirm(null); },
+        onError: (error) => { notify(error.data?.code === "FORBIDDEN" ? error.message : "تعذرت الأرشفة، حاول مرة أخرى", "error"); setConfirm(null); },
       });
     } else {
       deleteTx.mutate({ id: tx.id }, {
         onSuccess: () => { setTxs((prev) => prev.filter((t) => t.id !== tx.id)); notify("نُقلت المعاملة إلى سلة المحذوفات"); setConfirm(null); setSelected(null); },
-        onError: () => { notify("تعذر الحذف، حاول مرة أخرى", "error"); setConfirm(null); },
+        onError: (error) => { notify(error.data?.code === "FORBIDDEN" ? error.message : "تعذر الحذف، حاول مرة أخرى", "error"); setConfirm(null); },
       });
     }
   };
@@ -249,8 +251,10 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
         </header>
 
         <main id="main" className="content" tabIndex={-1}>
-          {effectivePage === "dashboard" && <Dashboard txs={txs} canEdit={canEdit} onNew={openNew} onOpen={setSelected} onSearch={searchFromDashboard} onQuickFilter={quickFilter} onShowAll={() => { setFilters(EMPTY_FILTERS); go("transactions"); }} />}
-          {effectivePage === "transactions" && <Transactions data={filtered} total={txs.length} filters={filters} setFilters={setFilters} departments={departments} canEdit={canEdit} onNew={openNew} onOpen={setSelected} onExport={() => exportCsv(filtered)} />}
+          {serverTxs.isLoading && <p className="muted loading-text" role="status">جارٍ تحميل المعاملات…</p>}
+          {serverTxs.isError && <div className="alert alert-error" role="alert">تعذر تحميل المعاملات من الخادم. <button type="button" className="btn btn-outline btn-sm" onClick={() => serverTxs.refetch()}>إعادة المحاولة</button></div>}
+          {effectivePage === "dashboard" && <Dashboard txs={txs} canCreate={perms.create} roleNotice={roleNotice} onNew={openNew} onOpen={setSelected} onSearch={searchFromDashboard} onQuickFilter={quickFilter} onShowAll={() => { setFilters(EMPTY_FILTERS); go("transactions"); }} />}
+          {effectivePage === "transactions" && <Transactions data={filtered} total={txs.length} filters={filters} setFilters={setFilters} departments={departments} canCreate={perms.create} onNew={openNew} onOpen={setSelected} onExport={() => exportCsv(filtered)} />}
           {effectivePage === "reports" && <Reports txs={txs} departments={departments} onExport={() => exportCsv(txs)} orgName={settings.header || settings.org} />}
           {effectivePage === "users" && <Users currentUserId={account.id} notify={notify} />}
           {effectivePage === "settings" && <Settings notify={notify} onSaved={setSettings} />}
@@ -263,6 +267,7 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
           departments={departments}
           currentUserName={account.name}
           saving={createTx.isPending || updateTx.isPending}
+          scope={perms.edit ? "full" : "followup"}
           onClose={closeForm}
           onSave={saveTx}
         />
@@ -270,8 +275,10 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
       {selected && !formTarget && (
         <TxDetailDialog
           tx={selected}
-          canEdit={canEdit}
-          canDelete={isAdmin}
+          canEdit={perms.edit}
+          canFollowUp={perms.followUp}
+          canArchive={perms.archive}
+          canDelete={perms.delete}
           onClose={closeDetail}
           onEdit={() => setFormTarget(selected)}
           onArchive={() => setConfirm({ kind: "archive", tx: selected })}

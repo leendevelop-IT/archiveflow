@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Paperclip, Trash2, Upload } from "lucide-react";
 import { TX_PRIORITIES, TX_STATUSES, TX_TYPES, TYPE_HINTS, type Tx, type TxForm, type TxPriority, type TxStatus, type TxType } from "@/lib/archive";
-import { addDaysIso, todayIso } from "@/lib/format";
+import { addDaysIso, formatDateLong, todayIso } from "@/lib/format";
 import { Dialog, Field } from "./ui";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -9,15 +9,18 @@ const TYPE_ICONS: Record<TxType, typeof ArrowDownToLine> = { "واردة": Arrow
 
 type Errors = Partial<Record<"subject" | "party" | "received" | "due" | "attachment", string>>;
 
-export function TxFormDialog({ initial, departments, currentUserName, saving, onClose, onSave }: {
+export function TxFormDialog({ initial, departments, currentUserName, saving, scope = "full", onClose, onSave }: {
   initial?: Tx;
   departments: string[];
   currentUserName: string;
   saving: boolean;
+  /** "followup": only the follow-up fields can change (status, assignee, department, priority, notes). */
+  scope?: "full" | "followup";
   onClose: () => void;
   onSave: (form: TxForm) => void;
 }) {
   const editing = Boolean(initial);
+  const followUpOnly = scope === "followup" && editing;
   const [form, setForm] = useState<TxForm>(() => initial
     ? { ...initial }
     : { type: "واردة", subject: "", party: "", received: todayIso(), due: addDaysIso(todayIso(), 7), priority: "متوسطة", status: "جديدة", department: departments[0] ?? "الإدارة العامة", assignee: currentUserName, notes: "", attachment: "" });
@@ -48,6 +51,7 @@ export function TxFormDialog({ initial, departments, currentUserName, saving, on
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const next: Errors = {};
+    if (followUpOnly) { onSave({ ...form, assignee: form.assignee.trim() || currentUserName }); return; }
     if (!form.subject.trim()) next.subject = "اكتب موضوع المعاملة.";
     if (!form.party.trim()) next.party = `اكتب اسم ${partyLabel === "الإدارة المعنية" ? "الإدارة" : "الجهة"}.`;
     if (!form.received) next.received = "اختر تاريخ الورود.";
@@ -64,18 +68,63 @@ export function TxFormDialog({ initial, departments, currentUserName, saving, on
 
   return (
     <Dialog
-      title={editing ? "تعديل المعاملة" : "معاملة جديدة"}
+      title={followUpOnly ? "تحديث المتابعة" : editing ? "تعديل المعاملة" : "معاملة جديدة"}
       subtitle={editing ? <span className="ref-number">{initial?.number}</span> : "املأ البيانات الأساسية، ويُنشأ رقم المعاملة تلقائيًا عند الحفظ."}
       onClose={onClose}
       size="lg"
       footer={
         <>
           <button type="button" className="btn btn-outline" onClick={onClose} disabled={saving}>إلغاء</button>
-          <button type="submit" form="tx-form" className="btn btn-primary" disabled={saving}>{saving ? "جارٍ الحفظ…" : editing ? "حفظ التعديلات" : "حفظ المعاملة"}</button>
+          <button type="submit" form="tx-form" className="btn btn-primary" disabled={saving}>{saving ? "جارٍ الحفظ…" : followUpOnly ? "حفظ التحديث" : editing ? "حفظ التعديلات" : "حفظ المعاملة"}</button>
         </>
       }
     >
       <form id="tx-form" className="form" onSubmit={submit} noValidate>
+        {followUpOnly && initial ? (
+          <>
+            <dl className="detail-grid followup-summary" aria-label="بيانات المعاملة (للاطلاع)">
+              <div><dt>الموضوع</dt><dd>{initial.subject}</dd></div>
+              <div><dt>{partyLabel}</dt><dd>{initial.party}</dd></div>
+              <div><dt>النوع</dt><dd>{initial.type}</dd></div>
+              <div><dt>موعد الاستحقاق</dt><dd>{formatDateLong(initial.due)}</dd></div>
+            </dl>
+            <p className="muted form-note">صلاحيتك متابعة المعاملة: يمكنك تحديث الحالة والموظف المسؤول والقسم والأولوية والملاحظات. بيانات التسجيل يعدّلها موظف التسجيل أو مدير النظام.</p>
+            <div className="form-grid">
+              <Field label="الحالة">
+                {({ id }) => (
+                  <select id={id} value={form.status} onChange={(e) => update("status", e.target.value as TxStatus)} autoFocus>
+                    {TX_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                )}
+              </Field>
+              <Field label="الموظف المسؤول">
+                {({ id }) => <input id={id} value={form.assignee} onChange={(e) => update("assignee", e.target.value)} />}
+              </Field>
+              <Field label="القسم المسؤول">
+                {({ id }) => (
+                  <select id={id} value={form.department} onChange={(e) => update("department", e.target.value)}>
+                    {departmentOptions.map((d) => <option key={d}>{d}</option>)}
+                  </select>
+                )}
+              </Field>
+              <Field label="الأولوية">
+                {({ id, labelId }) => (
+                  <div id={id} className="segmented" role="radiogroup" aria-labelledby={labelId}>
+                    {TX_PRIORITIES.map((p) => (
+                      <button key={p} type="button" role="radio" aria-checked={form.priority === p} className={`priority-${p === "عالية" ? "high" : p === "متوسطة" ? "medium" : "low"} ${form.priority === p ? "selected" : ""}`} onClick={() => update("priority", p as TxPriority)}>
+                        <i aria-hidden="true" />{p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+              <Field label="ملاحظات" className="span-2" hint="ما تم إنجازه أو ما ينتظر المعاملة.">
+                {({ id, describedBy }) => <textarea id={id} aria-describedby={describedBy} rows={3} value={form.notes} onChange={(e) => update("notes", e.target.value)} />}
+              </Field>
+            </div>
+          </>
+        ) : (
+        <>
         <fieldset className="choice-group">
           <legend>نوع المعاملة</legend>
           <div className="choice-cards">
@@ -168,6 +217,8 @@ export function TxFormDialog({ initial, departments, currentUserName, saving, on
           )}
           {errors.attachment && <p className="field-error" role="alert">{errors.attachment}</p>}
         </div>
+        </>
+        )}
       </form>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import { LOCAL_SESSION_COOKIE } from "@shared/const";
+import { FOLLOW_UP_FIELDS, can, pickFollowUpFields, type Permission } from "@shared/permissions";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { isUniqueViolation, authenticateLocal, createLocalAccount, deleteLocalAccount, updateLocalAccount, listLocalAccounts, listTransactionHistory, listTransactions, createTransaction, updateTransaction, softDeleteTransaction, restoreTransaction, listDeletedTransactions, createBackup, listBackups, restoreBackup, uploadArchiveAttachment, listAttachments, MAX_ATTACHMENT_BYTES } from "./db";
@@ -6,7 +7,10 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 const localProtected = publicProcedure.use(({ ctx, next }) => { if (!ctx.localUser) throw new TRPCError({ code: "UNAUTHORIZED", message: "LOCAL_LOGIN_REQUIRED" }); return next({ ctx: { ...ctx, localUser: ctx.localUser } }); });
-const localAdmin = localProtected.use(({ ctx, next }) => { if (ctx.localUser.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "ADMIN_REQUIRED" }); return next({ ctx: { ...ctx, localUser: ctx.localUser } }); });
+const localAdmin = localProtected.use(({ ctx, next }) => { if (ctx.localUser.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "هذا الإجراء متاح لمدير النظام فقط" }); return next({ ctx: { ...ctx, localUser: ctx.localUser } }); });
+const NO_PERMISSION = "ليس لديك صلاحية لهذا الإجراء. راجع مدير النظام إن كنت تحتاجها.";
+/** Procedure that requires one role-based permission (see shared/permissions.ts). */
+const withPermission = (permission: Permission) => localProtected.use(({ ctx, next }) => { if (!can(ctx.localUser.role, permission)) throw new TRPCError({ code: "FORBIDDEN", message: NO_PERMISSION }); return next({ ctx: { ...ctx, localUser: ctx.localUser } }); });
 const cookieOptions = { httpOnly: true, sameSite: "none" as const, secure: true, path: "/" };
 /** Turns a unique-constraint failure into a message the client can show as-is. */
 async function withConflict<T>(run: () => Promise<T>, message: string): Promise<T> {
@@ -31,14 +35,23 @@ export const appRouter = router({
     list: localProtected.query(() => listTransactions()),
     deleted: localAdmin.query(() => listDeletedTransactions()),
     history: localProtected.input(z.object({ id: z.number() })).query(({ input }) => listTransactionHistory(input.id)),
-    create: localProtected.input(txInput).mutation(({ input, ctx }) => withConflict(() => createTransaction(input, ctx.localUser.id), "هذا الرقم مستخدم من قبل، أعد المحاولة")),
-    update: localProtected.input(z.object({ id: z.number(), data: txInput.partial() })).mutation(({ input, ctx }) => withConflict(() => updateTransaction(input.id, input.data, ctx.localUser.id), "هذا الرقم مستخدم من قبل، أعد المحاولة")),
-    archive: localProtected.input(z.object({ id: z.number() })).mutation(({ input, ctx }) => updateTransaction(input.id, { archived: true, status: "مكتملة" }, ctx.localUser.id)),
+    create: withPermission("transactions.create").input(txInput).mutation(({ input, ctx }) => withConflict(() => createTransaction(input, ctx.localUser.id), "هذا الرقم مستخدم من قبل، أعد المحاولة")),
+    update: localProtected.input(z.object({ id: z.number(), data: txInput.partial() })).mutation(({ input, ctx }) => {
+      const role = ctx.localUser.role;
+      if (can(role, "transactions.edit")) return withConflict(() => updateTransaction(input.id, input.data, ctx.localUser.id), "هذا الرقم مستخدم من قبل، أعد المحاولة");
+      if (!can(role, "transactions.followUp")) throw new TRPCError({ code: "FORBIDDEN", message: NO_PERMISSION });
+      // Follow-up officers may only change the follow-up fields.
+      const requested = Object.keys(input.data).filter((key) => input.data[key as keyof typeof input.data] !== undefined);
+      const blocked = requested.filter((key) => !(FOLLOW_UP_FIELDS as readonly string[]).includes(key));
+      if (blocked.length) throw new TRPCError({ code: "FORBIDDEN", message: "صلاحيتك تسمح بتحديث الحالة والموظف المسؤول والقسم والأولوية والملاحظات فقط" });
+      return updateTransaction(input.id, pickFollowUpFields(input.data), ctx.localUser.id);
+    }),
+    archive: withPermission("transactions.archive").input(z.object({ id: z.number() })).mutation(({ input, ctx }) => updateTransaction(input.id, { archived: true, status: "مكتملة" }, ctx.localUser.id)),
     delete: localAdmin.input(z.object({ id: z.number() })).mutation(({ input, ctx }) => softDeleteTransaction(input.id, ctx.localUser.id)),
     restore: localAdmin.input(z.object({ id: z.number() })).mutation(({ input, ctx }) => restoreTransaction(input.id, ctx.localUser.id)),
   }),
   attachments: router({
-    upload: localProtected.input(z.object({ transactionId: z.number(), fileName: z.string().min(1).max(255), mimeType: z.string().max(120), size: z.number().int().min(0).max(MAX_ATTACHMENT_BYTES), base64: z.string().max(15000000) })).mutation(async ({ input }) => { try { return await uploadArchiveAttachment(input); } catch (error) { throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "تعذر رفع المرفق" }); } }),
+    upload: withPermission("attachments.upload").input(z.object({ transactionId: z.number(), fileName: z.string().min(1).max(255), mimeType: z.string().max(120), size: z.number().int().min(0).max(MAX_ATTACHMENT_BYTES), base64: z.string().max(15000000) })).mutation(async ({ input }) => { try { return await uploadArchiveAttachment(input); } catch (error) { throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "تعذر رفع المرفق" }); } }),
     list: localProtected.input(z.object({ transactionId: z.number() })).query(({ input }) => listAttachments(input.transactionId)),
   }),
   backups: router({

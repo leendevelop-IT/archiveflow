@@ -45,20 +45,8 @@ export const TYPE_SLUG: Record<TxType, "incoming" | "outgoing" | "internal"> = {
 export const STATUS_SLUG: Record<TxStatus, "new" | "progress" | "done" | "late"> = { "جديدة": "new", "قيد الإجراء": "progress", "مكتملة": "done", "متأخرة": "late" };
 export const PRIORITY_SLUG: Record<TxPriority, "high" | "medium" | "low"> = { "عالية": "high", "متوسطة": "medium", "منخفضة": "low" };
 
-export type AccountRole = "admin" | "registration" | "followup" | "readonly";
-export const ROLE_LABELS: Record<AccountRole, string> = {
-  admin: "مدير النظام",
-  registration: "موظف تسجيل",
-  followup: "موظف متابعة",
-  readonly: "قراءة فقط",
-};
-export const ROLE_HINTS: Record<AccountRole, string> = {
-  admin: "كل الصلاحيات، بما فيها الإعدادات والمستخدمون والحذف",
-  registration: "تسجيل المعاملات الجديدة وتعديلها",
-  followup: "متابعة المعاملات وتحديث حالتها وأرشفتها",
-  readonly: "الاطلاع والبحث والطباعة فقط",
-};
-export const ROLE_ORDER: AccountRole[] = ["registration", "followup", "readonly", "admin"];
+export { ROLE_LABELS, ROLE_HINTS, ROLE_ORDER, can, type AccountRole, type Permission } from "@shared/permissions";
+import type { AccountRole } from "@shared/permissions";
 
 export type Account = { id: number; username: string; name: string; role: AccountRole; status: "active" | "suspended" };
 

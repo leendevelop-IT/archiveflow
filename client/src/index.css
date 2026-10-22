@@ -235,6 +235,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .empty-state p { color: var(--muted); max-width: 42ch; }
 .empty-state .btn { margin-top: 12px; }
 .loading-text { padding: 24px 0; }
+.role-notice { display: flex; align-items: center; gap: 10px; margin: -6px 0 18px; padding: 12px 16px; border-radius: 12px; background: var(--seal-soft); color: var(--seal-text); font-size: 15px; font-weight: 500; }
+.role-notice svg { flex: none; }
+.followup-summary { margin-bottom: 14px; padding: 14px 16px; border-radius: 12px; background: var(--card-2); }
+.form-note { margin: 0 0 16px; font-size: 14.5px; line-height: 1.6; }
 .full-loading { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); background: var(--paper); font-size: 17px; }
 
 /* ---------- search & filters ---------- */

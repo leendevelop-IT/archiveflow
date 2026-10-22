@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, Clock3, FolderOpen, Inbox, PartyPopper, Plus, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, Clock3, FolderOpen, Inbox, PartyPopper, Plus, Search, ShieldCheck } from "lucide-react";
 import type { Tx, TxStatus } from "@/lib/archive";
 import { dueInfo, txCount } from "@/lib/format";
 import { TxTable } from "@/components/TxTable";
@@ -7,9 +7,11 @@ import { DueLabel, PageHeader, SectionHead, TypeChip } from "@/components/ui";
 
 export type QuickFilter = { status?: TxStatus; due?: "late" | "soon" };
 
-export function Dashboard({ txs, canEdit, onNew, onOpen, onSearch, onQuickFilter, onShowAll }: {
+export function Dashboard({ txs, canCreate, roleNotice, onNew, onOpen, onSearch, onQuickFilter, onShowAll }: {
   txs: Tx[];
-  canEdit: boolean;
+  canCreate: boolean;
+  /** One line telling non-admin staff what their account can do; empty for admins. */
+  roleNotice?: string;
   onNew: () => void;
   onOpen: (tx: Tx) => void;
   onSearch: (query: string) => void;
@@ -33,8 +35,9 @@ export function Dashboard({ txs, canEdit, onNew, onOpen, onSearch, onQuickFilter
       <PageHeader
         title="لوحة المتابعة"
         description="ما يحتاج إجراءً اليوم، وآخر ما سُجِّل في الأرشيف."
-        action={canEdit && <button type="button" className="btn btn-primary btn-lg" onClick={onNew}><Plus size={20} aria-hidden="true" /> معاملة جديدة</button>}
+        action={canCreate && <button type="button" className="btn btn-primary btn-lg" onClick={onNew}><Plus size={20} aria-hidden="true" /> معاملة جديدة</button>}
       />
+      {roleNotice && <p className="role-notice"><ShieldCheck size={18} aria-hidden="true" /> {roleNotice}</p>}
 
       <form className="search-bar" onSubmit={submitSearch} role="search">
         <Search size={20} aria-hidden="true" />
@@ -104,7 +107,7 @@ export function Dashboard({ txs, canEdit, onNew, onOpen, onSearch, onQuickFilter
           onOpen={onOpen}
           emptyTitle="الأرشيف فارغ"
           emptyText="ابدأ بتسجيل أول معاملة، وستظهر هنا مع رقمها وموعدها."
-          emptyAction={canEdit && <button type="button" className="btn btn-primary" onClick={onNew}><Plus size={18} aria-hidden="true" /> معاملة جديدة</button>}
+          emptyAction={canCreate && <button type="button" className="btn btn-primary" onClick={onNew}><Plus size={18} aria-hidden="true" /> معاملة جديدة</button>}
         />
       </section>
     </>
