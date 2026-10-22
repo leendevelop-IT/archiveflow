@@ -1,4 +1,4 @@
-import { Archive, Pencil, Printer, Trash2 } from "lucide-react";
+import { Archive, Paperclip, Pencil, Printer, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import type { Tx } from "@/lib/archive";
 import { dueInfo, formatDateLong, formatDateTime } from "@/lib/format";
@@ -17,6 +17,7 @@ export function TxDetailDialog({ tx, canEdit, canDelete, onClose, onEdit, onArch
 }) {
   const info = dueInfo(tx);
   const history = trpc.transactions.history.useQuery({ id: tx.id }, { retry: false });
+  const files = trpc.attachments.list.useQuery({ transactionId: tx.id }, { retry: false });
 
   return (
     <Dialog
@@ -57,7 +58,26 @@ export function TxDetailDialog({ tx, canEdit, canDelete, onClose, onEdit, onArch
         <div><dt>القسم المسؤول</dt><dd>{tx.department}</dd></div>
         <div><dt>الموظف المسؤول</dt><dd>{tx.assignee}</dd></div>
         <div><dt>تاريخ الورود</dt><dd>{formatDateLong(tx.received)}</dd></div>
-        <div><dt>المرفق</dt><dd><AttachmentName name={tx.attachment} /></dd></div>
+        <div>
+          <dt>المرفق</dt>
+          <dd>
+            {files.data?.length ? (
+              <ul className="attachment-list">
+                {files.data.map((file) => (
+                  <li key={file.id}>
+                    <a className="attachment-link" href={file.url} target="_blank" rel="noopener noreferrer">
+                      <Paperclip size={15} aria-hidden="true" />
+                      <span dir="auto">{file.fileName}</span>
+                      <span className="muted">({Math.max(1, Math.round(file.size / 1024))} ك.ب)</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <AttachmentName name={tx.attachment} />
+            )}
+          </dd>
+        </div>
         <div><dt>الأرشفة</dt><dd>{tx.archived ? "مؤرشفة" : "نشطة"}</dd></div>
       </dl>
 

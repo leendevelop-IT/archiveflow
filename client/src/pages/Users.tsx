@@ -47,6 +47,8 @@ export function Users({ currentUserId, notify }: { currentUserId: number; notify
     if (dialog === "new") {
       if (!/^[a-zA-Z0-9._-]{3,}$/.test(draft.username.trim())) next.username = "اسم الدخول بأحرف إنجليزية أو أرقام، 3 أحرف على الأقل.";
       if (draft.password.length < 8) next.password = "كلمة المرور 8 أحرف على الأقل.";
+    } else if (draft.password && draft.password.length < 8) {
+      next.password = "كلمة المرور الجديدة 8 أحرف على الأقل.";
     }
     setErrors(next);
     if (Object.keys(next).length) return;
@@ -55,14 +57,14 @@ export function Users({ currentUserId, notify }: { currentUserId: number; notify
         await createAccount.mutateAsync({ name: draft.name.trim(), username: draft.username.trim(), password: draft.password, role: draft.role, status: draft.status });
         notify(`تمت إضافة ${draft.name.trim()} وبإمكانه الدخول الآن`);
       } else if (dialog) {
-        await updateAccount.mutateAsync({ id: dialog.id, name: draft.name.trim(), role: draft.role, status: draft.status });
-        notify("تم حفظ التغييرات");
+        await updateAccount.mutateAsync({ id: dialog.id, name: draft.name.trim(), role: draft.role, status: draft.status, password: draft.password || undefined });
+        notify(draft.password ? "تم حفظ التغييرات وتغيير كلمة المرور" : "تم حفظ التغييرات");
       }
       await refresh();
       close();
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      notify(message.includes("Duplicate") ? "اسم الدخول مستخدم من قبل، اختر اسمًا آخر" : message || "تعذر الحفظ، حاول مرة أخرى", "error");
+      notify(/duplicate/i.test(message) ? "اسم الدخول مستخدم من قبل، اختر اسمًا آخر" : message || "تعذر الحفظ، حاول مرة أخرى", "error");
     }
   };
 
@@ -166,6 +168,11 @@ export function Users({ currentUserId, notify }: { currentUserId: number; notify
                     {({ id, describedBy, invalid }) => <input id={id} aria-describedby={describedBy} aria-invalid={invalid} dir="ltr" type="password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} autoComplete="new-password" />}
                   </Field>
                 </>
+              )}
+              {dialog !== "new" && (
+                <Field label="كلمة مرور جديدة" error={errors.password} hint="اتركها فارغة إن لم ترغب في تغييرها. سيُطلب من الموظف الدخول من جديد." className="span-2">
+                  {({ id, describedBy, invalid }) => <input id={id} aria-describedby={describedBy} aria-invalid={invalid} dir="ltr" type="password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} autoComplete="new-password" />}
+                </Field>
               )}
             </div>
             <RoleChoices value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />

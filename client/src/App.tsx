@@ -160,7 +160,7 @@ function AppShell({ account, onSignedOut }: { account: Account; onSignedOut: () 
         notify(`تم تسجيل المعاملة برقم ${number}`);
         setFormTarget(null);
       },
-      onError: (error) => notify(error.message.includes("Duplicate") ? "هذا الرقم مستخدم من قبل، أعد المحاولة" : "تعذر حفظ المعاملة، تأكد من الاتصال ثم حاول مرة أخرى", "error"),
+      onError: (error) => notify(error.data?.code === "CONFLICT" ? error.message : "تعذر حفظ المعاملة، تأكد من الاتصال ثم حاول مرة أخرى", "error"),
     });
   };
 

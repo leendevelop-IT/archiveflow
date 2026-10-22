@@ -318,6 +318,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .due-done { color: var(--done); }
 .date-text { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .attachment-name { display: inline-flex; align-items: center; gap: 6px; }
+.attachment-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.attachment-link { display: inline-flex; align-items: center; gap: 6px; color: var(--seal-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.attachment-link:hover { color: var(--seal-hover); }
 .you-tag { margin-inline-start: 8px; padding: 1px 8px; border-radius: 999px; background: var(--seal-soft); color: var(--seal-text); font-size: 12px; font-weight: 600; vertical-align: middle; }
 
 /* ---------- tables ---------- */

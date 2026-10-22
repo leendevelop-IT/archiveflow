@@ -6,6 +6,12 @@ import { listLLMModels } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { COOKIE_NAME } from "../shared/const";
 
+// Files are stored in the application database; keep the unit test free of a live connection.
+vi.mock("./storage", () => ({
+  storagePut: vi.fn(async (key: string) => ({ key, url: `/api/files/${key}` })),
+  storageGetSignedUrl: vi.fn(async (key: string) => `/api/files/${key}`),
+}));
+
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("current platform integration", () => {
   it("exposes only named public runtime configuration", () => {
@@ -26,17 +32,15 @@ describe("current platform integration", () => {
     await expect(listLLMModels()).rejects.toThrow("MANUS_API_URL");
     expect(request).not.toHaveBeenCalled();
   });
-  it("persists URL-only image results through current managed storage", async () => {
+  it("persists URL-only image results in the application database", async () => {
     vi.stubEnv("MANUS_API_URL", "https://api.example"); vi.stubEnv("MANUS_API_KEY", "test-only");
     const request = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ image: { url: "https://image.example/result.png", mimeType: "image/png" } })))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ url: "https://upload.example/object" })))
-      .mockResolvedValueOnce(new Response(""));
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])));
     vi.stubGlobal("fetch", request);
     const image = await generateImage({ prompt: "test", originalImages: [] });
-    expect(image.url).toMatch(/^\/manus-storage\/generated\//);
-    expect(request).toHaveBeenCalledTimes(4);
+    expect(image.url).toMatch(/^\/api\/files\/generated\//);
+    expect(request).toHaveBeenCalledTimes(2);
     expect(JSON.parse(request.mock.calls[0][1].body)).toHaveProperty("originalImages");
   });
   it("uses a distinct secure app cookie behind the HTTPS Preview proxy", () => {

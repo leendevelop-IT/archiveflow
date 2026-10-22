@@ -5,6 +5,13 @@ import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, error }) {
+    // Database failures carry the SQL text; the browser only needs to know the operation failed.
+    if (error.code === "INTERNAL_SERVER_ERROR" && /^Failed query/i.test(error.message)) {
+      return { ...shape, message: "تعذر تنفيذ العملية على قاعدة البيانات، حاول مرة أخرى" };
+    }
+    return shape;
+  },
 });
 
 export const router = t.router;

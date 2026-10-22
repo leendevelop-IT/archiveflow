@@ -1,0 +1,16 @@
+# Render Blueprint: one Node web service. Set DATABASE_URL (Postgres) and SESSION_SECRET in the dashboard.
+services:
+  - type: web
+    name: archiveflow
+    runtime: node
+    plan: free
+    buildCommand: npm install -g pnpm@10.18.0 && pnpm install --frozen-lockfile --prod=false && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true

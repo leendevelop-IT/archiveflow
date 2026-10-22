@@ -1,21 +1,12 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uploads via Forge Server presigned URL to S3 (PUT direct).
-// Downloads return /manus-storage/{key} paths served via 307 redirect.
+// Files are kept inside the application database (table `stored_files`), so the app
+// runs on any host without an object-storage account. Downloads go through
+// authenticated routes under /api/files/.
 
-import { ENV } from "./_core/env";
+import { eq } from "drizzle-orm";
+import { storedFiles } from "../drizzle/schema";
+import { getDb, requireDb } from "./_core/dbClient";
 
-function getForgeConfig() {
-  const forgeUrl = ENV.forgeApiUrl;
-  const forgeKey = ENV.forgeApiKey;
-
-  if (!forgeUrl || !forgeKey) {
-    throw new Error(
-      "Storage config missing: set MANUS_API_URL and MANUS_API_KEY",
-    );
-  }
-
-  return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
-}
+export const MAX_STORED_FILE_BYTES = 25 * 1024 * 1024;
 
 function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
@@ -28,71 +19,46 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
+export function storageUrl(key: string) {
+  return `/api/files/${normalizeKey(key).split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
+  const db = requireDb(await getDb());
   const key = appendHashSuffix(normalizeKey(relKey));
+  const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data);
+  if (bytes.length > MAX_STORED_FILE_BYTES) throw new Error("File is too large to store");
+  await db
+    .insert(storedFiles)
+    .values({ key, mimeType: contentType, size: bytes.length, data: bytes })
+    .onConflictDoUpdate({ target: storedFiles.key, set: { mimeType: contentType, size: bytes.length, data: bytes } });
+  return { key, url: storageUrl(key) };
+}
 
-  // 1. Get presigned PUT URL from Forge
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
+export async function storageGetFile(relKey: string): Promise<{ key: string; mimeType: string; size: number; data: Buffer } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(storedFiles).where(eq(storedFiles.key, normalizeKey(relKey))).limit(1);
+  if (!row) return null;
+  return { key: row.key, mimeType: row.mimeType, size: row.size, data: Buffer.from(row.data) };
+}
 
-  const presignResp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
-  }
-
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
-
-  // 2. PUT file directly to S3
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-
-  const uploadResp = await fetch(s3Url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-  });
-
-  if (!uploadResp.ok) {
-    throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
-  }
-
-  return { key, url: `/manus-storage/${key}` };
+export async function storageDelete(relKey: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storedFiles).where(eq(storedFiles.key, normalizeKey(relKey)));
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
-  return { key, url: `/manus-storage/${key}` };
+  return { key, url: storageUrl(key) };
 }
 
+/** Same-origin download path; the route checks the caller's session before streaming the file. */
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = normalizeKey(relKey);
-
-  const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
-  getUrl.searchParams.set("path", key);
-
-  const resp = await fetch(getUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage signed URL failed (${resp.status}): ${msg}`);
-  }
-
-  const { url } = (await resp.json()) as { url: string };
-  if (!url) throw new Error("Storage did not return a download URL");
-  return url;
+  return storageUrl(relKey);
 }
